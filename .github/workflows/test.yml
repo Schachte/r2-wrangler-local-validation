@@ -17,10 +17,31 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      - name: install root deps
+        run: npm ci
+
+      - name: install devserver deps
+        run: npm ci
+        working-directory: devserver
 
       - name: typecheck
         run: npm run typecheck
+
+      - name: start wrangler devserver
+        working-directory: devserver
+        run: |
+          npx wrangler dev --ip 127.0.0.1 --port 8787 > wrangler-dev.log 2>&1 &
+          echo "WRANGLER_PID=$!" >> "$GITHUB_ENV"
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8787/ >/dev/null; then
+              echo "devserver ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::wrangler devserver failed to start"
+          cat wrangler-dev.log
+          exit 1
 
       - name: run compat tests
         env:
@@ -30,16 +51,20 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
-          WRANGLER_CWD: ${{ secrets.WRANGLER_CWD }}
+          WRANGLER_CWD: devserver
           VERBOSE: "1"
-          NO_COLOR: ""
+          NO_COLOR: "1"
         run: |
+          set -o pipefail
           npm test 2>&1 | tee test-output.txt
-          exit ${PIPESTATUS[0]}
 
       - name: annotate failures
         if: failure()
         run: |
-          grep -E '^\s*(FAIL|[0-9]+\.) ' test-output.txt | while IFS= read -r line; do
+          grep -E '^\s*(FAIL|[0-9]+\.) ' test-output.txt 2>/dev/null | while IFS= read -r line; do
             echo "::error::$line"
-          done
+          done || true
+
+      - name: stop wrangler devserver
+        if: always()
+        run: kill "$WRANGLER_PID" 2>/dev/null || true

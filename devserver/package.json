@@ -1,0 +1,9 @@
+{
+  "name": "devserver",
+  "private": true,
+  "version": "0.0.0",
+  "devDependencies": {
+    "wrangler": "https://pkg.pr.new/wrangler@14323",
+    "miniflare": "https://pkg.pr.new/miniflare@14323"
+  }
+}

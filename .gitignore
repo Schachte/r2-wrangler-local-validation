@@ -2,5 +2,7 @@ node_modules/
 .env
 .wrangler/
 *.log
-devserver/
 mfstate/
+devserver/node_modules/
+devserver/.wrangler/
+devserver/mfstate/

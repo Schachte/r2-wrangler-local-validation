@@ -1,33 +1,12 @@
-import { run, type Capture, type Case, type Fixture } from "./lib.ts";
+import { run, type Capture, type Case } from "../lib.ts";
+import { FIXTURES } from "./fixtures.ts";
 
 type Fields = (keyof Capture)[];
 
 const PAST = "Tue, 01 Jan 2008 00:00:00 GMT";
 const FUTURE = "Fri, 01 Jan 2100 00:00:00 GMT";
 
-const FIXTURES: Fixture[] = [
-	{ key: "range-key", body: "0123456789" },
-	{ key: "empty-key", body: "" },
-	{ key: "100%/a%2Bb.txt", body: "percent" },
-	{ key: "cond-key", body: "conditional" },
-	{ key: "nested/a/b/c.txt", body: "deep" },
-	{ key: "with space.txt", body: "spaced" },
-	{ key: "unicode-\u00e9\u00e8.txt", body: "uni" },
-	{
-		key: "meta-key",
-		body: "metadata-body",
-		contentType: "application/json",
-		cacheControl: "max-age=3600",
-		contentDisposition: 'attachment; filename="x.json"',
-		contentEncoding: "identity",
-		contentLanguage: "en-US",
-	},
-	{ key: "type-text", body: "plain text body", contentType: "text/plain; charset=utf-8" },
-	{ key: "type-html", body: "<h1>hi</h1>", contentType: "text/html" },
-	{ key: "type-png", body: "not-really-a-png", contentType: "image/png" },
-];
-
-const FULL: Fields = ["status", "contentLength", "acceptRanges", "hasEtag", "bodyLen", "bodyBase64"];
+const FULL: Fields = ["status", "contentType", "contentLength", "acceptRanges", "hasEtag", "bodyLen", "bodyBase64"];
 const RANGE: Fields = ["status", "contentRange", "contentLength", "bodyLen", "bodyBase64"];
 const HEAD_RANGE: Fields = ["status", "contentRange", "contentLength", "bodyLen"];
 const META: Fields = [
@@ -49,7 +28,7 @@ const reads: Case[] = [
 	{ name: "nested-key", path: "/nested/a/b/c.txt", compare: FULL },
 	{ name: "space-key", path: "/with%20space.txt", compare: FULL },
 	{ name: "unicode-key", path: "/unicode-%C3%A9%C3%A8.txt", compare: FULL },
-	{ name: "percent-key", path: "/100%25/a%252Bb.txt", compare: ["status", "bodyLen", "bodyBase64"] },
+	{ name: "percent-key", path: "/100%25/a%252Bb.txt", compare: FULL },
 	{ name: "query-ignored", path: "/range-key?foo=bar", compare: FULL },
 	{ name: "missing-key", path: "/does-not-exist", compare: ["status"] },
 	{ name: "head-missing", path: "/does-not-exist", method: "HEAD", compare: ["status"] },

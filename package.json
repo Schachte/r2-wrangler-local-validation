@@ -1,11 +1,12 @@
 {
   "name": "r2-public-compat",
   "private": true,
-  "type": "module",
-  "scripts": {
-    "compat": "tsx --env-file-if-exists=.env r2-public-compat.ts",
-    "typecheck": "tsc --noEmit"
-  },
+	"type": "module",
+	"scripts": {
+		"test": "tsx --env-file-if-exists=.env tests/r2-public-compat.ts",
+		"compat": "npm test",
+		"typecheck": "tsc --noEmit"
+	},
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.658.0",
     "@types/node": "^22.20.0",

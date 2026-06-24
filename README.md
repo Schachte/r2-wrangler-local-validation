@@ -20,8 +20,8 @@ behaves like a real `r2.dev` bucket. Sample data is seeded into both systems for
 - `get-200 GET /range-key contentType (+1 fields)`
 - `empty-object GET /empty-key contentType (+1 fields)`
 - `nested-key GET /nested/a/b/c.txt contentType (+1 fields)`
-- `space-key GET /with%20space.txt status (+6 fields)`
-- `unicode-key GET /unicode-%C3%A9%C3%A8.txt status (+6 fields)`
+- `space-key GET /with%20space.txt contentType (+1 fields)`
+- `unicode-key GET /unicode-%C3%A9%C3%A8.txt contentType (+1 fields)`
 - `percent-key GET /100%25/a%252Bb.txt contentType (+1 fields)`
 - `query-ignored GET /range-key?foo=bar contentType (+1 fields)`
 <!-- TEST-RESULTS:END -->

@@ -1,8 +1,4 @@
 import { strict as assert } from "node:assert";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
-import { tmpdir } from "node:os";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 export type Fixture = {
@@ -64,17 +60,6 @@ function failureLimit(): number {
 	return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 20;
 }
 
-function metaFlags(f: Fixture): string[] {
-	const flags: [string, string | undefined][] = [
-		["--content-type", f.contentType],
-		["--cache-control", f.cacheControl],
-		["--content-disposition", f.contentDisposition],
-		["--content-encoding", f.contentEncoding],
-		["--content-language", f.contentLanguage],
-	];
-	return flags.flatMap(([flag, value]) => (value === undefined ? [] : [flag, value]));
-}
-
 function fixtureHeaders(f: Fixture): HeadersInit {
 	return Object.fromEntries(
 		[
@@ -87,74 +72,15 @@ function fixtureHeaders(f: Fixture): HeadersInit {
 	);
 }
 
-function sqlString(value: string): string {
-	return `'${value.replaceAll("'", "''")}'`;
+function localSeedBase(): string {
+	const explicit = process.env.LOCAL_SEED;
+	return explicit ? normalize(explicit) : `${new URL(need("LOCAL")).origin}/__seed`;
 }
 
-function localStateRoot(wranglerCwd: string): string {
-	const persistTo = process.env.LOCAL_PERSIST;
-	if (!persistTo) {
-		return join(wranglerCwd, ".wrangler", "state", "v3");
-	}
-	return isAbsolute(persistTo) ? persistTo : join(wranglerCwd, persistTo);
-}
-
-function localR2ObjectDbPaths(wranglerCwd: string): string[] {
-	const objectStoreDir = join(localStateRoot(wranglerCwd), "r2", "miniflare-R2BucketObject");
-	return readdirSync(objectStoreDir)
-		.filter((name) => name.endsWith(".sqlite") && name !== "metadata.sqlite")
-		.map((name) => join(objectStoreDir, name));
-}
-
-function renameLocalObjectKey(wranglerCwd: string, from: string, to: string): void {
-	let renamed = false;
-	for (const dbPath of localR2ObjectDbPaths(wranglerCwd)) {
-		const count = Number(execFileSync("sqlite3", [dbPath, `SELECT COUNT(*) FROM _mf_objects WHERE key = ${sqlString(from)};`]).toString().trim());
-		if (count === 0) {
-			continue;
-		}
-		execFileSync(
-			"sqlite3",
-			[
-				dbPath,
-				[
-					`DELETE FROM _mf_objects WHERE key = ${sqlString(to)};`,
-					`UPDATE _mf_objects SET key = ${sqlString(to)} WHERE key = ${sqlString(from)};`,
-				].join("\n"),
-			],
-			{ stdio: "ignore" }
-		);
-		renamed = true;
-	}
-	if (!renamed) {
-		throw new Error(`Could not find local R2 metadata row for ${from}`);
-	}
-}
-
-async function seedLocalWithHttp(f: Fixture): Promise<void> {
-	const localSeed = process.env.LOCAL_SEED;
-	if (!localSeed) {
-		return;
-	}
-	const res = await fetch(`${normalize(localSeed)}/${encodeURIComponent(f.key)}`, { method: "PUT", headers: fixtureHeaders(f), body: f.body });
+async function seedLocalWithHttp(base: string, f: Fixture, body: Buffer): Promise<void> {
+	const res = await fetch(`${base}/${encodeURIComponent(f.key)}`, { method: "PUT", headers: fixtureHeaders(f), body: new Uint8Array(body) });
 	if (!res.ok) {
 		throw new Error(`Local seed failed for ${f.key}: ${res.status} ${await res.text()}`);
-	}
-}
-
-function seedLocalWithWrangler(bucket: string, dir: string, f: Fixture, body: Buffer): void {
-	const wranglerCwd = process.env.WRANGLER_CWD ?? process.cwd();
-	const persistTo = process.env.LOCAL_PERSIST ? ["--persist-to", process.env.LOCAL_PERSIST] : [];
-	const file = join(dir, encodeURIComponent(f.key));
-	const localKey = f.key.replaceAll("%", "%25");
-	writeFileSync(file, body);
-	execFileSync(
-		"npx",
-		["wrangler", "r2", "object", "put", `${bucket}/${localKey}`, "--file", file, "--local", ...persistTo, ...metaFlags(f)],
-		{ cwd: wranglerCwd, stdio: "ignore" }
-	);
-	if (localKey !== f.key) {
-		renameLocalObjectKey(wranglerCwd, localKey, f.key);
 	}
 }
 
@@ -168,7 +94,7 @@ async function seed(fixtures: Fixture[]): Promise<void> {
 			secretAccessKey: need("R2_SECRET_ACCESS_KEY"),
 		},
 	});
-	const dir = mkdtempSync(join(tmpdir(), "r2compat-"));
+	const localSeed = localSeedBase();
 	for (const f of fixtures) {
 		const body = Buffer.from(f.body);
 		await s3.send(
@@ -184,11 +110,7 @@ async function seed(fixtures: Fixture[]): Promise<void> {
 				ContentLanguage: f.contentLanguage,
 			})
 		);
-		if (process.env.LOCAL_SEED) {
-			await seedLocalWithHttp(f);
-		} else {
-			seedLocalWithWrangler(bucket, dir, f, body);
-		}
+		await seedLocalWithHttp(localSeed, f, body);
 	}
 }
 

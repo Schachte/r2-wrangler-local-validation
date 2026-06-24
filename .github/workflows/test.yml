@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -69,3 +72,20 @@ jobs:
       - name: stop wrangler devserver
         if: always()
         run: kill "$WRANGLER_PID" 2>/dev/null || true
+
+      - name: render results into README
+        if: always()
+        run: python3 .github/scripts/render_results.py test-output.txt README.md
+
+      - name: commit results to README
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          if git diff --quiet README.md; then
+            echo "README unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "ci: update test results in README [skip ci]"
+          git push

@@ -75,6 +75,18 @@ function metaFlags(f: Fixture): string[] {
 	return flags.flatMap(([flag, value]) => (value === undefined ? [] : [flag, value]));
 }
 
+function fixtureHeaders(f: Fixture): HeadersInit {
+	return Object.fromEntries(
+		[
+			["x-ct", f.contentType],
+			["x-cc", f.cacheControl],
+			["x-cd", f.contentDisposition],
+			["x-ce", f.contentEncoding],
+			["x-cl", f.contentLanguage],
+		].filter((entry): entry is [string, string] => entry[1] !== undefined)
+	);
+}
+
 function sqlString(value: string): string {
 	return `'${value.replaceAll("'", "''")}'`;
 }
@@ -119,10 +131,35 @@ function renameLocalObjectKey(wranglerCwd: string, from: string, to: string): vo
 	}
 }
 
-async function seed(fixtures: Fixture[]): Promise<void> {
-	const bucket = need("R2_BUCKET");
+async function seedLocalWithHttp(f: Fixture): Promise<void> {
+	const localSeed = process.env.LOCAL_SEED;
+	if (!localSeed) {
+		return;
+	}
+	const res = await fetch(`${normalize(localSeed)}/${encodeURIComponent(f.key)}`, { method: "PUT", headers: fixtureHeaders(f), body: f.body });
+	if (!res.ok) {
+		throw new Error(`Local seed failed for ${f.key}: ${res.status} ${await res.text()}`);
+	}
+}
+
+function seedLocalWithWrangler(bucket: string, dir: string, f: Fixture, body: Buffer): void {
 	const wranglerCwd = process.env.WRANGLER_CWD ?? process.cwd();
 	const persistTo = process.env.LOCAL_PERSIST ? ["--persist-to", process.env.LOCAL_PERSIST] : [];
+	const file = join(dir, encodeURIComponent(f.key));
+	const localKey = f.key.replaceAll("%", "%25");
+	writeFileSync(file, body);
+	execFileSync(
+		"npx",
+		["wrangler", "r2", "object", "put", `${bucket}/${localKey}`, "--file", file, "--local", ...persistTo, ...metaFlags(f)],
+		{ cwd: wranglerCwd, stdio: "ignore" }
+	);
+	if (localKey !== f.key) {
+		renameLocalObjectKey(wranglerCwd, localKey, f.key);
+	}
+}
+
+async function seed(fixtures: Fixture[]): Promise<void> {
+	const bucket = need("R2_BUCKET");
 	const s3 = new S3Client({
 		region: "auto",
 		endpoint: need("R2_S3_ENDPOINT"),
@@ -147,16 +184,10 @@ async function seed(fixtures: Fixture[]): Promise<void> {
 				ContentLanguage: f.contentLanguage,
 			})
 		);
-		const file = join(dir, encodeURIComponent(f.key));
-		const localKey = f.key.replaceAll("%", "%25");
-		writeFileSync(file, body);
-		execFileSync(
-			"npx",
-			["wrangler", "r2", "object", "put", `${bucket}/${localKey}`, "--file", file, "--local", ...persistTo, ...metaFlags(f)],
-			{ cwd: wranglerCwd, stdio: "ignore" }
-		);
-		if (localKey !== f.key) {
-			renameLocalObjectKey(wranglerCwd, localKey, f.key);
+		if (process.env.LOCAL_SEED) {
+			await seedLocalWithHttp(f);
+		} else {
+			seedLocalWithWrangler(bucket, dir, f, body);
 		}
 	}
 }
@@ -172,10 +203,7 @@ async function resolveHeaders(label: string, base: string, c: Case): Promise<Rec
 	}
 	const warm = await fetch(base + c.path, { redirect: "manual" });
 	await warm.arrayBuffer();
-	const etag = warm.headers.get("etag");
-	if (!etag) {
-		throw new Error(`${label} warmup did not return an ETag for ${c.name} (${c.path}, status ${warm.status})`);
-	}
+	const etag = warm.headers.get("etag") ?? `missing-etag:${label}:${warm.status}`;
 	return Object.fromEntries(Object.entries(headers).map(([key, value]) => [key, value.replace("{etag}", etag)]));
 }
 

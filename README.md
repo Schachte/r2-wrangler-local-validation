@@ -6,6 +6,24 @@ Checks that miniflare's local R2 public endpoint (`/cdn-cgi/local/r2/public`)
 behaves like a real `r2.dev` bucket. Sample data is seeded into both systems for a 1:1 comparison.
 
 <!-- TEST-RESULTS:START -->
+![tests](https://img.shields.io/badge/tests-43%2F50%20passed-red)
+
+**7 of 50 compat checks failing:**
+
+- `get-200 GET /range-key`
+- `empty-object GET /empty-key`
+- `nested-key GET /nested/a/b/c.txt`
+- `space-key GET /with%20space.txt`
+- `unicode-key GET /unicode-%C3%A9%C3%A8.txt`
+- `percent-key GET /100%25/a%252Bb.txt`
+- `query-ignored GET /range-key?foo=bar`
+- `get-200 GET /range-key contentType (+1 fields)`
+- `empty-object GET /empty-key contentType (+1 fields)`
+- `nested-key GET /nested/a/b/c.txt contentType (+1 fields)`
+- `space-key GET /with%20space.txt status (+6 fields)`
+- `unicode-key GET /unicode-%C3%A9%C3%A8.txt status (+6 fields)`
+- `percent-key GET /100%25/a%252Bb.txt contentType (+1 fields)`
+- `query-ignored GET /range-key?foo=bar contentType (+1 fields)`
 <!-- TEST-RESULTS:END -->
 
 ## Setup
